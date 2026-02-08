@@ -99,6 +99,11 @@ class DataProcessor:
                 ph_locations.append([dur, max(1, len(en_phs))])
                 new_phonemes.extend(en_phs)
                 note2origin.extend([ph_idx] * len(en_phs))
+            elif phonemes[ph_idx][:3] == "ja_":
+                ja_phs = ['ja_' + x for x in phonemes[ph_idx][3:].split('-')] + ['<SEP>']
+                ph_locations.append([dur, max(1, len(ja_phs))])
+                new_phonemes.extend(ja_phs)
+                note2origin.extend([ph_idx] * len(ja_phs))
             else:
                 ph_locations.append([dur, 1])
                 new_phonemes.append(phonemes[ph_idx])

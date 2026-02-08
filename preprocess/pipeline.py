@@ -16,7 +16,7 @@ from preprocess.tools import (
 
 
 class PreprocessPipeline:
-    def __init__(self, device: str, language: str, save_dir: str, vocal_sep: bool = True, max_merge_duration: int = 60000):
+    def __init__(self, device: str, language: str, save_dir: str, vocal_sep: bool = True, max_merge_duration: int = 60000, ja_model_size: str = "large-v3"):
         self.device = device
         self.language = language
         self.save_dir = save_dir
@@ -43,7 +43,8 @@ class PreprocessPipeline:
         self.lyric_transcriber = LyricTranscriber(
             zh_model_path="pretrained_models/SoulX-Singer-Preprocess/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
             en_model_path="pretrained_models/SoulX-Singer-Preprocess/parakeet-tdt-0.6b-v2/parakeet-tdt-0.6b-v2.nemo",
-            device=device
+            device=device,
+            ja_model_size=ja_model_size,
         )
         self.note_transcriber = NoteTranscriber(
             rosvot_model_path="pretrained_models/SoulX-Singer-Preprocess/rosvot/rosvot/model.pt", 
@@ -124,6 +125,7 @@ def main(args):
         save_dir=args.save_dir,
         vocal_sep=args.vocal_sep,
         max_merge_duration=args.max_merge_duration,
+        ja_model_size=args.ja_model_size,
     )
     pipeline.run(
         audio_path=args.audio_path,
@@ -140,7 +142,8 @@ if __name__ == "__main__":
     parser.add_argument("--language", type=str, default="Mandarin", help="Language of the audio")
     parser.add_argument("--device", type=str, default="cuda:0", help="Device to run the models on")
     parser.add_argument("--vocal_sep", type=bool, default=True, help="Whether to perform vocal separation")
-    parser.add_argument("--max_merge_duration", type=int, default=60000, help="Maximum merged segment duration in milliseconds")    
+    parser.add_argument("--max_merge_duration", type=int, default=60000, help="Maximum merged segment duration in milliseconds")
+    parser.add_argument("--ja_model_size", type=str, default="large-v3", help="Whisper model size for Japanese ASR")
     args = parser.parse_args()
 
     main(args)

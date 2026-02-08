@@ -282,6 +282,43 @@ class _ASREnModel:
         return words, durs
 
 
+class _ASRJaModel:
+    """Japanese ASR wrapper using faster-whisper."""
+
+    def __init__(self, model_size: str, device: str):
+        from faster_whisper import WhisperModel
+
+        compute_type = "float16" if "cuda" in device else "int8"
+        self.model = WhisperModel(model_size, device=device.split(":")[0], compute_type=compute_type)
+
+    @staticmethod
+    def _clean_word(word: str) -> str:
+        return re.sub(r"[\?\.,:]", "", word).strip()
+
+    def process(self, wav_fn: str) -> Tuple[List[str], List[float]]:
+        segments, _ = self.model.transcribe(wav_fn, language="ja", word_timestamps=True)
+
+        raw_words: List[str] = []
+        raw_timestamps: List[List[float]] = []
+        for segment in segments:
+            if segment.words is None:
+                continue
+            for w in segment.words:
+                word = self._clean_word(w.word)
+                if word:
+                    raw_words.append(word)
+                    raw_timestamps.append([w.start, w.end])
+
+        words, durs = _build_words_with_gaps(raw_words, raw_timestamps, wav_fn)
+
+        if os.path.exists(wav_fn.replace(".wav", "_f0.npy")):
+            words, durs = _word_dur_post_process(
+                words, durs, np.load(wav_fn.replace(".wav", "_f0.npy"))
+            )
+
+        return words, durs
+
+
 class LyricTranscriber:
     """Transcribe lyrics from singing voice segment
     """
@@ -292,6 +329,7 @@ class LyricTranscriber:
         en_model_path: str,
         device: str = "cuda",
         *,
+        ja_model_size: str = "large-v3",
         verbose: bool = True,
     ):
         """Initialize lyric transcriber.
@@ -300,12 +338,14 @@ class LyricTranscriber:
             zh_model_path (str): Path to the Chinese model file.
             en_model_path (str): Path to the English model file.
             device (str): Device to use for tensor operations.
+            ja_model_size (str): Whisper model size for Japanese ASR.
             verbose (bool): Whether to print verbose logs.
         """
         self.verbose = verbose
         self.device = device
         self.zh_model_path = zh_model_path
         self.en_model_path = en_model_path
+        self.ja_model_size = ja_model_size
 
         if self.verbose:
             print(
@@ -317,8 +357,9 @@ class LyricTranscriber:
         # Always initialize Chinese ASR.
         self.zh_model = _ASRZhModel(device=device, model_path=zh_model_path)
 
-        # English ASR will be lazily initialized on first English request to avoid long waiting cost when importing NeMo
+        # English and Japanese ASR will be lazily initialized on first request
         self.en_model = None
+        self.ja_model = None
 
         if self.verbose:
             print("[lyric transcription] init: success")
@@ -332,14 +373,20 @@ class LyricTranscriber:
             verbose (bool | None): Whether to print verbose logs. Defaults to None.
         """
         v = self.verbose if verbose is None else verbose
-        if language not in {"Mandarin", "Cantonese", "English"}:
-            raise ValueError(f"Unsupported language: {language}, should be one of ['Mandarin', 'Cantonese', 'English']")
+        if language not in {"Mandarin", "Cantonese", "English", "Japanese"}:
+            raise ValueError(f"Unsupported language: {language}, should be one of ['Mandarin', 'Cantonese', 'English', 'Japanese']")
         if v:
             print(f"[lyric transcription] process: start: wav_fn={wav_fn} language={language}")
             t0 = time.time()
 
         lang = (language or "auto").lower()
-        if lang in {"english"}:
+        if lang in {"japanese"}:
+            if self.ja_model is None:
+                if v:
+                    print("[lyric transcription] init Japanese ASR (faster-whisper)")
+                self.ja_model = _ASRJaModel(model_size=self.ja_model_size, device=self.device)
+            out = self.ja_model.process(wav_fn)
+        elif lang in {"english"}:
             if self.en_model is None:
                 # Lazy-load NeMo model only when English is actually used.
                 if v:

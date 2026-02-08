@@ -328,7 +328,7 @@ def build_ui():
                 with gr.Row():
                     easy_language = gr.Dropdown(
                         label="言語",
-                        choices=["Mandarin", "English", "Cantonese"],
+                        choices=["Mandarin", "English", "Cantonese", "Japanese"],
                         value="Mandarin",
                     )
                     easy_vocal_sep = gr.Checkbox(

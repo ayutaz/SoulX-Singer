@@ -63,6 +63,8 @@ preprocess = [
     "sacremoses>=0.0.43",
     "peft>=0.18.1",
     "webdataset>=0.2.86",
+    "pyopenjtalk-plus>=0.4.1",
+    "faster-whisper>=1.1.0",
 ]
 
 [tool.uv]
