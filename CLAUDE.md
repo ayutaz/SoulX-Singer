@@ -9,18 +9,18 @@ SoulX-Singerは、ゼロショット歌声合成（SVS）モデル。未知の�
 ## 環境構築
 
 ```bash
-conda create -n soulxsinger -y python=3.10
-conda activate soulxsinger
-pip install -r requirements.txt                  # 推論用
-pip install -r preprocess/requirements.txt       # 前処理用（追加）
+# 推論用のみ
+uv sync
+
+# 前処理も含む場合
+uv sync --extra preprocess
 ```
 
 ## モデルダウンロード
 
 ```bash
-pip install -U huggingface_hub
-hf download Soul-AILab/SoulX-Singer --local-dir pretrained_models/SoulX-Singer
-hf download Soul-AILab/SoulX-Singer-Preprocess --local-dir pretrained_models/SoulX-Singer-Preprocess
+uv run huggingface-cli download Soul-AILab/SoulX-Singer --local-dir pretrained_models/SoulX-Singer
+uv run huggingface-cli download Soul-AILab/SoulX-Singer-Preprocess --local-dir pretrained_models/SoulX-Singer-Preprocess
 ```
 
 ## コマンド
@@ -35,7 +35,7 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 bash example/infer.sh
 
 # 直接実行
-python -m cli.inference \
+uv run python -m cli.inference \
     --device cuda \
     --model_path pretrained_models/SoulX-Singer/model.pt \
     --config soulxsinger/config/soulxsinger.yaml \
@@ -52,7 +52,7 @@ python -m cli.inference \
 ### 前処理パイプライン
 
 ```bash
-python -m preprocess.pipeline \
+uv run python -m preprocess.pipeline \
     --audio_path <入力音声> \
     --save_dir <出力先> \
     --language Mandarin   # Mandarin / English / Cantonese

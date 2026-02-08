@@ -44,7 +44,9 @@ SoulX-Singerは、Soul AI Labが開発した**ゼロショット歌声合成（S
 
 ## 依存関係
 
-### 推論用（`requirements.txt`）
+依存関係は `pyproject.toml` で管理し、`uv` で環境構築を行う。
+
+### 推論用（`[project.dependencies]`）
 
 | パッケージ | バージョン | 用途 |
 |-----------|-----------|------|
@@ -56,10 +58,12 @@ SoulX-Singerは、Soul AI Labが開発した**ゼロショット歌声合成（S
 | librosa | 0.11.0 | 音声解析 |
 | soundfile | 0.13.1 | 音声I/O |
 | omegaconf | 2.3.0 | 設定管理 |
-| gradio | 6.3.0 | UI（オプション） |
+| gradio | 6.3.0 | UI |
 | numpy | 2.2.6 | 数値計算 |
 | scipy | 1.15.3 | 科学計算 |
 
-### 前処理用（`preprocess/requirements.txt`、追加分）
+### 前処理用（`[project.optional-dependencies] preprocess`）
 
 主要な追加パッケージ: funasr, nemo_toolkit, g2p_en, g2pM, ToJyutping, mido, pretty_midi, pyworld, webrtcvad, sageattention 等
+
+`uv sync --extra preprocess` で追加インストール可能。
