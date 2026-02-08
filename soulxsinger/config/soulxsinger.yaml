@@ -37,16 +37,16 @@ model:
     time_scheduler: cos
 
 train:
-  learning_rate: 1.0e-5
-  weight_decay: 0.01
-  warmup_steps: 1000
-  max_steps: 100000
-  batch_size: 4
-  grad_clip: 1.0
-  save_every: 5000
-  eval_every: 1000
-  log_every: 50
-  prompt_duration: 0.5
-  freeze_vocoder: true
-  freeze_encoder: false
-  freeze_transformer: false
+  learning_rate: 1.0e-5      # AdamW learning rate
+  weight_decay: 0.01          # AdamW weight decay
+  warmup_steps: 1000          # Linear warmup steps for cosine schedule
+  max_steps: 100000           # Total training steps
+  batch_size: 4               # Per-device batch size
+  grad_clip: 1.0              # Gradient clipping max norm
+  save_every: 5000            # Checkpoint save interval (steps)
+  eval_every: 1000            # Validation interval (steps)
+  log_every: 50               # Logging interval (steps)
+  prompt_duration: 0.5        # Prompt duration (seconds)
+  freeze_vocoder: true        # Always freeze Vocos vocoder
+  freeze_encoder: false       # Freeze embeddings + ConvNeXt (for fine-tuning)
+  freeze_transformer: false   # Freeze CFMDecoder transformer layers

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-SoulX-Singerは、ゼロショット歌声合成（SVS）モデル。未知の歌手の高品質な歌声をファインチューニングなしで生成可能。メロディ制御（F0 contour）とスコア制御（MIDIノート）の2つの制御モードに対応。対応言語は中国語（普通話）、英語、広東語。
+SoulX-Singerは、ゼロショット歌声合成（SVS）モデル。未知の歌手の高品質な歌声をファインチューニングなしで生成可能。メロディ制御（F0 contour）とスコア制御（MIDIノート）の2つの制御モードに対応。対応言語は中国語（普通話）、英語、広東語、日本語。
 
 ## 環境構築
 
@@ -14,6 +14,9 @@ uv sync
 
 # 前処理も含む場合
 uv sync --extra preprocess
+
+# 学習も含む場合
+uv sync --extra train
 ```
 
 ## モデルダウンロード
@@ -55,17 +58,67 @@ uv run python -m cli.inference \
 uv run python -m preprocess.pipeline \
     --audio_path <入力音声> \
     --save_dir <出力先> \
-    --language Mandarin   # Mandarin / English / Cantonese
+    --language Mandarin   # Mandarin / English / Cantonese / Japanese
     --device cuda \
     --vocal_sep True      # ボーカル分離の有無
     --max_merge_duration 30000
 ```
 
+### データセット準備
+
+```bash
+# 単一の楽曲
+uv run python -m cli.prepare_dataset \
+    --sources data/preprocessed/song_001 \
+    --output data/dataset
+
+# 複数の楽曲
+uv run python -m cli.prepare_dataset \
+    --sources data/preprocessed/song_001 data/preprocessed/song_002 \
+    --output data/dataset
+
+# 親ディレクトリ以下を再帰的に処理
+uv run python -m cli.prepare_dataset \
+    --sources data/preprocessed \
+    --output data/dataset \
+    --recursive
+
+# 歌手名を明示的に指定
+uv run python -m cli.prepare_dataset \
+    --sources data/preprocessed/song_001 \
+    --output data/dataset \
+    --singer "singer_A"
+```
+
+### 学習の実行
+
+```bash
+# サンプル実行
+bash example/train.sh
+
+# ファインチューニング（推奨）
+accelerate launch -m cli.train \
+    --data_dir data/dataset \
+    --config soulxsinger/config/soulxsinger.yaml \
+    --resume_from pretrained_models/SoulX-Singer/model.pt \
+    --save_dir checkpoints/finetune \
+    --phoneset_path soulxsinger/utils/phoneme/phone_set.json
+
+# フルトレーニング（ゼロから）
+accelerate launch -m cli.train \
+    --data_dir data/dataset \
+    --config soulxsinger/config/soulxsinger.yaml \
+    --save_dir checkpoints/full_train \
+    --phoneset_path soulxsinger/utils/phoneme/phone_set.json
+```
+
+`--no_wandb` フラグでW&Bロギングを無効にできる。`--max_steps`, `--batch_size` 等のCLI引数でYAML設定を上書き可能。
+
 ## アーキテクチャ
 
 ### ディレクトリ構成
 
-- `cli/` - CLI推論エントリーポイント (`inference.py`)
+- `cli/` - CLIエントリーポイント (`inference.py`, `train.py`, `prepare_dataset.py`)
 - `soulxsinger/` - コアモデルパッケージ
   - `config/` - モデル設定YAML
   - `models/` - メインモデルとサブモジュール
@@ -95,9 +148,23 @@ uv run python -m preprocess.pipeline \
   → Mel-Band Roformer: ボーカル分離 + デリバーブ
   → RMVPE: F0（基本周波数）抽出
   → VAD: 音声区間検出
-  → ASR: 歌詞文字起こし (Paraformer=中国語 / Parakeet=英語)
+  → ASR: 歌詞文字起こし (Paraformer=中国語 / Parakeet=英語 / faster-whisper=日本語)
   → ROSVOT: ノートレベルのピッチ・デュレーション推定
   → セグメントマージ → メタデータJSON出力
+```
+
+### 学習パイプライン
+
+```
+学習データ (SVSDataset)
+  → DataProcessor: セグメントごとに音素・ピッチ・タイミングをテンソル化
+  → 同一歌手の別セグメントからプロンプトをランダム選択 (singer_to_indices)
+  → SoulXSinger.forward():
+      → Encoder: 音素/ピッチ/タイプ Embedding + ConvNeXt
+      → expand_states(): フレームレベルに展開
+      → CFMDecoder: Flow Matching損失を計算
+  → Accelerate: 分散学習、mixed precision、gradient accumulation
+  → チェックポイント保存 (推論互換形式)
 ```
 
 ### コアモデル構成
@@ -115,6 +182,7 @@ uv run python -m preprocess.pipeline \
 - `f0`: フレームレベルF0値（Hz）
 - `note_pitch` / `note_type`: MIDIピッチとノートタイプ
 - `words` / `word_durs`: 歌詞と各単語の長さ
+- `singer`: 歌手識別名（学習データセット用。prepare_datasetで付与）
 
 ### 重要な技術的ポイント
 
@@ -124,3 +192,8 @@ uv run python -m preprocess.pipeline \
 - DataProcessorは`<BOW>`/`<EOW>`トークンを挿入し、英語は`-`区切り＋`<SEP>`マーカーを使用
 - メルスペクトログラムのパラメータ: FFT=1920, hop=480, mels=128, SR=24kHz, mean=-4.92, var=8.14
 - 設定はOmegaConfで管理（`soulxsinger/config/soulxsinger.yaml`）
+- 学習はAccelerateで管理し、Vocos vocoderは常にfrozen（`freeze_vocoder: true`）
+- チェックポイントは `model.state_dict()` 形式で保存され、推論スクリプトでそのままロード可能
+- SVSDatasetは`singer_to_indices`マッピングにより、同一歌手の別セグメントをプロンプトとして選択
+- 日本語の音素変換はpyopenjtalk-plusを使用し、音素に`ja_`プレフィックスを付与（例: `ja_a`, `ja_k`）
+- 日本語ASRはfaster-whisperを使用（`--ja_model_size`オプションでモデルサイズ指定可能）

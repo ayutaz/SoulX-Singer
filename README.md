@@ -28,7 +28,7 @@ It supports **melody-conditioned (F0 contour)** and **score-conditioned (MIDI no
 
 - **🎤 Zero-Shot Singing** – Generate high-fidelity voices for unseen singers, no fine-tuning needed.  
 - **🎵 Flexible Control Modes** – Melody (F0) and Score (MIDI) conditioning.  
-- **📚 Large-Scale Dataset** – 42,000+ hours of aligned vocals, lyrics, notes across Mandarin, English, Cantonese.  
+- **📚 Large-Scale Dataset** – 42,000+ hours of aligned vocals, lyrics, notes across Mandarin, English, Cantonese, and Japanese.  
 - **🧑‍🎤 Timbre Cloning** – Preserve singer identity across languages, styles, and edited lyrics.  
 - **✏️ Singing Voice Editing** – Modify lyrics while keeping natural prosody.  
 - **🌐 Cross-Lingual Synthesis** – High-fidelity synthesis by disentangling timbre from content.  
@@ -90,6 +90,10 @@ pip install -r requirements.txt
 pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com
 ```
 
+**4. (Optional) Install training dependencies:**
+```
+uv add wandb
+```
 
 ---
 
@@ -122,10 +126,53 @@ bash example/infer.sh
 
 This script relies on metadata generated from the preprocessing pipeline, including vocal separation and transcription. Users should follow the steps in [preprocess](preprocess/README.md) to prepare the necessary metadata before running the demo with their own data.
 
+---
+
+## 🏋️ Training
+
+### Prepare Dataset
+
+Convert preprocessing outputs into training dataset format:
+
+```sh
+# Single song
+python -m cli.prepare_dataset \
+    --sources data/preprocessed/song_001 \
+    --output data/dataset
+
+# All songs under a directory (recursive)
+python -m cli.prepare_dataset \
+    --sources data/preprocessed \
+    --output data/dataset \
+    --recursive
+```
+
+### Fine-Tuning
+
+Fine-tune from the pretrained checkpoint:
+
+```sh
+accelerate launch -m cli.train \
+    --data_dir data/dataset \
+    --config soulxsinger/config/soulxsinger.yaml \
+    --resume_from pretrained_models/SoulX-Singer/model.pt \
+    --save_dir checkpoints/finetune \
+    --phoneset_path soulxsinger/utils/phoneme/phone_set.json
+```
+
+Or use the provided example script:
+```sh
+bash example/train.sh
+```
+
+See `soulxsinger/config/soulxsinger.yaml` for all training hyperparameters.
+
+---
 
 ## 🚧 Roadmap
 
-- [ ] 🖥️ Web-based UI for easy and interactive inference  
+- [x] 🇯🇵 Japanese language support for preprocessing pipeline
+- [ ] 🖥️ Web-based UI for easy and interactive inference
 - [ ] 🌐 Online demo deployment on Hugging Face Spaces  
 - [ ] 📊 Release the SoulX-Singer-Eval benchmark  
 - [ ] 📚 Comprehensive tutorials and usage documentation  
@@ -144,6 +191,8 @@ Special thanks to the following open-source projects:
 [Paraformer](https://modelscope.cn/models/iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch)
 - [Parakeet-tdt-0.6b-v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2)
 - [ROSVOT](https://github.com/RickyL-2000/ROSVOT)
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- [pyopenjtalk](https://github.com/r9y9/pyopenjtalk)
 
 
 
