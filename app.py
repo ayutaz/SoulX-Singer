@@ -281,7 +281,12 @@ def build_ui():
                     value=device,
                 )
             load_btn = gr.Button("モデルをロード", variant="primary")
-            load_status = gr.Textbox(label="ステータス", interactive=False)
+            _initial_status = ""
+            if _model is not None:
+                _dev = str(next(_model.parameters()).device)
+                _pc = sum(p.numel() for p in _model.parameters()) / 1e6
+                _initial_status = f"モデルロード完了（{_pc:.1f}M パラメータ、デバイス: {_dev}）"
+            load_status = gr.Textbox(label="ステータス", interactive=False, value=_initial_status)
 
         load_btn.click(
             fn=load_model,
@@ -482,5 +487,15 @@ def build_ui():
 
 
 if __name__ == "__main__":
+    # 起動時にモデルを自動ロード
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if os.path.isfile(DEFAULT_MODEL_PATH):
+        print(f"モデルを自動ロード中... ({device})")
+        try:
+            status = load_model(DEFAULT_MODEL_PATH, DEFAULT_CONFIG_PATH, device)
+            print(status)
+        except Exception as e:
+            print(f"モデルの自動ロードに失敗しました: {e}")
+
     demo = build_ui()
     demo.launch(server_name="0.0.0.0", server_port=7870, theme=gr.themes.Soft())

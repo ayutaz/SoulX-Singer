@@ -2,12 +2,96 @@
 # https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2
 import os
 import re
+import sys
 import time
+import types
 from typing import Any, Dict, List, Tuple
 
 import librosa
 import numpy as np
 from funasr import AutoModel
+
+
+def _ensure_nv_one_logger_stub():
+    """Register stub modules for nv_one_logger if not installed.
+
+    NeMo 2.6.x unconditionally imports ``nv_one_logger`` (an NVIDIA-internal
+    package) during ``import nemo.collections.asr``.  When this package is
+    absent the import chain fails with ``ModuleNotFoundError``.
+
+    This helper injects lightweight stub modules into ``sys.modules`` so the
+    import succeeds without the real package.  The stubs provide only the
+    names that NeMo actually references at import time.
+    """
+    if "nv_one_logger" in sys.modules:
+        return
+
+    # Module paths that NeMo's one_logger_callback.py imports:
+    #   nv_one_logger.api.config              -> OneLoggerConfig
+    #   nv_one_logger.training_telemetry.api.callbacks  -> on_app_start
+    #   nv_one_logger.training_telemetry.api.config     -> TrainingTelemetryConfig
+    #   nv_one_logger.training_telemetry.api.training_telemetry_provider -> TrainingTelemetryProvider
+    #   nv_one_logger.training_telemetry.integration.pytorch_lightning   -> TimeEventCallback
+    sub_paths = [
+        "nv_one_logger",
+        "nv_one_logger.api",
+        "nv_one_logger.api.config",
+        "nv_one_logger.training_telemetry",
+        "nv_one_logger.training_telemetry.api",
+        "nv_one_logger.training_telemetry.api.callbacks",
+        "nv_one_logger.training_telemetry.api.config",
+        "nv_one_logger.training_telemetry.api.training_telemetry_provider",
+        "nv_one_logger.training_telemetry.integration",
+        "nv_one_logger.training_telemetry.integration.pytorch_lightning",
+    ]
+    for path in sub_paths:
+        if path not in sys.modules:
+            sys.modules[path] = types.ModuleType(path)
+
+    # Provide dummy classes / functions referenced at import time.
+    from lightning.pytorch.callbacks import Callback as _PTLCallback
+
+    class _DummyOneLoggerConfig:
+        def __init__(self, **kw):
+            pass
+
+    class _DummyTrainingTelemetryConfig:
+        def __init__(self, **kw):
+            pass
+
+    class _DummyProvider:
+        _inst = None
+
+        @classmethod
+        def instance(cls):
+            if cls._inst is None:
+                cls._inst = cls()
+            return cls._inst
+
+        def with_base_config(self, *a, **kw):
+            return self
+
+        def with_export_config(self, *a, **kw):
+            return self
+
+        def configure_provider(self, *a, **kw):
+            return self
+
+        def set_training_telemetry_config(self, *a, **kw):
+            pass
+
+        class config:
+            telemetry_config = None
+
+    class _DummyTimeEventCallback(_PTLCallback):
+        def __init__(self, *a, **kw):
+            super().__init__()
+
+    sys.modules["nv_one_logger.api.config"].OneLoggerConfig = _DummyOneLoggerConfig
+    sys.modules["nv_one_logger.training_telemetry.api.callbacks"].on_app_start = lambda *a, **kw: None
+    sys.modules["nv_one_logger.training_telemetry.api.config"].TrainingTelemetryConfig = _DummyTrainingTelemetryConfig
+    sys.modules["nv_one_logger.training_telemetry.api.training_telemetry_provider"].TrainingTelemetryProvider = _DummyProvider
+    sys.modules["nv_one_logger.training_telemetry.integration.pytorch_lightning"].TimeEventCallback = _DummyTimeEventCallback
 
 
 def _build_words_with_gaps(raw_words, raw_timestamps, wav_fn: str):
@@ -133,6 +217,7 @@ class _ASREnModel:
 
     def __init__(self, model_path: str, device: str):
         try:
+            _ensure_nv_one_logger_stub()
             import nemo.collections.asr as nemo_asr  # type: ignore
         except Exception as e:  # pragma: no cover
             raise ImportError(
@@ -144,6 +229,16 @@ class _ASREnModel:
             restore_path=model_path,
             map_location=device,
         )
+        # Disable CUDA graphs for decoding — avoids cuda-bindings API
+        # incompatibility between NeMo 2.6.x and newer PyTorch/CUDA versions.
+        # Setting this in cfg.decoding.greedy ensures it persists across
+        # change_decoding_strategy() calls (e.g. when timestamps=True).
+        from omegaconf import open_dict
+        with open_dict(self.model.cfg.decoding):
+            if not self.model.cfg.decoding.get("greedy"):
+                self.model.cfg.decoding.greedy = {}
+            self.model.cfg.decoding.greedy.use_cuda_graph_decoder = False
+        self.model.change_decoding_strategy(self.model.cfg.decoding, verbose=False)
         self.model.eval()
 
     @staticmethod
