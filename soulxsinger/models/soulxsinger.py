@@ -102,6 +102,60 @@ class SoulXSinger(nn.Module):
         
         return f0_coarse
 
+    def forward(self, batch):
+        """Training forward pass. Returns loss dict.
+
+        Args:
+            batch: dict with keys:
+                - prompt_waveform: (B, 1, T_prompt_wav) prompt audio
+                - target_waveform: (B, 1, T_target_wav) target audio (GT)
+                - phoneme: (B, N) phoneme ids (prompt + target concatenated)
+                - note_pitch: (B, N) note pitch values
+                - note_type: (B, N) note type values
+                - mel2note: (B, F) mel-to-note alignment (prompt + target)
+                - f0: (B, F) F0 values at frame level (prompt + target)
+                - prompt_mel_len: (B,) number of mel frames in prompt
+                - mel_mask: (B, F_total) 1 for valid frames, 0 for padding
+                - is_prompt: (B, F_total) 1 for prompt frames, 0 for target
+        """
+        # 1. Convert waveforms to mel spectrograms
+        pt_mel = self.mel(batch['prompt_waveform'].squeeze(1))  # (B, T_pt, mel_dim)
+        gt_mel = self.mel(batch['target_waveform'].squeeze(1))  # (B, T_gt, mel_dim)
+
+        # 2. Encode note features
+        features = (self.note_pitch_encoder(batch['note_pitch'])
+                    + self.note_type_encoder(batch['note_type'])
+                    + self.note_text_encoder(batch['phoneme']))
+        features = self.preflow(features)
+        features = self.expand_states(features, batch['mel2note'])
+
+        # 3. F0 encoding
+        f0_coarse = self.f0_to_coarse(batch['f0'])
+        features = features + self.f0_encoder(f0_coarse)
+
+        # 4. Concatenate prompt + target mel
+        mel = torch.cat([pt_mel, gt_mel], dim=1)  # (B, F_total, mel_dim)
+
+        # Align feature and mel lengths (may differ by 1-2 frames)
+        min_len = min(mel.shape[1], features.shape[1])
+        mel = mel[:, :min_len, :]
+        features = features[:, :min_len, :]
+        x_mask = batch['mel_mask'][:, :min_len]
+        is_prompt = batch['is_prompt'][:, :min_len]
+
+        # 5. CFMDecoder.forward() → compute_loss()
+        noise, x, flow_pred, final_mask, prompt_len = self.cfm_decoder(
+            mel, x_mask, features, is_prompt
+        )
+
+        # 6. Compute L1 loss (same pattern as flow_matching.py:424-430)
+        final_mask = final_mask.squeeze(-1)
+        flow_gt = x - (1 - 1e-5) * noise
+        diff_loss = F.l1_loss(flow_pred, flow_gt, reduction="none").float() * final_mask.unsqueeze(-1)
+        diff_loss = torch.mean(diff_loss, dim=2).sum() / final_mask.sum()
+
+        return {"loss": diff_loss}
+
     def infer(self, meta: dict, auto_shift=False, pitch_shift=0, n_steps=32, cfg=3, control="melody"):
         
         gt_note_text = meta['target']['phoneme']

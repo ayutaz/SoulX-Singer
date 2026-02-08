@@ -3043,6 +3043,9 @@ preprocess = [
     { name = "webrtcvad-wheels" },
     { name = "whisper-normalizer" },
 ]
+train = [
+    { name = "wandb" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -3105,11 +3108,12 @@ requires-dist = [
     { name = "tqdm", specifier = "==4.67.1" },
     { name = "transformers", specifier = "==4.41.2" },
     { name = "wandb", marker = "extra == 'preprocess'", specifier = "==0.24.2" },
+    { name = "wandb", marker = "extra == 'train'", specifier = ">=0.24.0" },
     { name = "webdataset", marker = "extra == 'preprocess'", specifier = ">=0.2.86" },
     { name = "webrtcvad-wheels", marker = "extra == 'preprocess'", specifier = ">=2.0.14" },
     { name = "whisper-normalizer", marker = "extra == 'preprocess'", specifier = ">=0.1.12" },
 ]
-provides-extras = ["preprocess"]
+provides-extras = ["preprocess", "train"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.0.2" }]

@@ -35,3 +35,18 @@ model:
     cond_scale_factor: 1
     sigma: 1e-5
     time_scheduler: cos
+
+train:
+  learning_rate: 1.0e-5
+  weight_decay: 0.01
+  warmup_steps: 1000
+  max_steps: 100000
+  batch_size: 4
+  grad_clip: 1.0
+  save_every: 5000
+  eval_every: 1000
+  log_every: 50
+  prompt_duration: 0.5
+  freeze_vocoder: true
+  freeze_encoder: false
+  freeze_transformer: false

@@ -66,6 +66,9 @@ preprocess = [
     "pyopenjtalk-plus>=0.4.1",
     "faster-whisper>=1.1.0",
 ]
+train = [
+    "wandb>=0.24.0",
+]
 
 [tool.uv]
 index-url = "https://pypi.org/simple"
@@ -78,6 +81,9 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch" }
 torchaudio = { index = "pytorch" }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 [dependency-groups]
 dev = [
